@@ -107,7 +107,9 @@ func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error
 	if me.Cache.Hashes == nil {
 		me.Cache.Hashes = make(map[string][]string)
 	}
-	me.Cache.Hashes[hashstr] = append(me.Cache.Hashes[hashstr], path) // store in map for comparison
+
+	me.Cache.Hashes[hashstr] = AppendIfMissing(me.Cache.Hashes[hashstr], path) // store in map for comparison
+
 	if me.Cache.Files == nil {
 		me.Cache.Files = make(map[string]string)
 	}
@@ -123,8 +125,13 @@ func (me *Dedupe) ShowDuplicates() {
 
 	}
 }
-func (me *Cache) DeleteDuplicates() {
+func (me *Dedupe) DeleteDuplicates() {
+	for val := range me.Cache.Hashes {
+		if len(me.Cache.Hashes[val]) > 0 {
+			fmt.Println("Duplicates ", me.Cache.Hashes[val])
+		}
 
+	}
 }
 
 func main() {
@@ -241,4 +248,13 @@ func Unzip(src string, dest string) ([]string, error) {
 		}
 	}
 	return filenames, nil
+}
+
+func AppendIfMissing(slice []string, i string) []string {
+	for _, ele := range slice {
+		if ele == i {
+			return slice
+		}
+	}
+	return append(slice, i)
 }
