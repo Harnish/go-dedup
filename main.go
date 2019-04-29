@@ -18,13 +18,18 @@ var cachefile = "/Users/jharnish/.dedupcache.json"
 var files = make(map[[sha512.Size]byte]string)
 
 type Cache struct {
-	Files    map[string]string
-	Hashes   map[string][]string
-	Organize bool
+	Files  map[string]string
+	Hashes map[string][]string
 }
 
-func NewCache(path string) *Cache {
-	me := &Cache{}
+type Dedupe struct {
+	Unzip    bool
+	Organize bool
+	Cache    Cache
+}
+
+func NewCache(path string) *Dedupe {
+	me := &Dedupe{}
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		fmt.Println(err)
@@ -41,19 +46,19 @@ func NewCache(path string) *Cache {
 }
 
 func PurgeCache(path string) {
-	me := &Cache{}
+	me := &Dedupe{}
 	me.WriteCache(path)
 }
 
-func (me *Cache) WriteCache(path string) {
-	data, err := json.Marshal(me)
+func (me *Dedupe) WriteCache(path string) {
+	data, err := json.Marshal(me.Cache)
 	if err != nil {
 		fmt.Println(err)
 	}
 	ioutil.WriteFile(path, data, 0644)
 }
 
-func (me *Cache) checkDuplicate(path string, info os.FileInfo, err error) error {
+func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error {
 	//fmt.Println(path)
 	if err != nil {
 		fmt.Println(err)
@@ -62,7 +67,11 @@ func (me *Cache) checkDuplicate(path string, info os.FileInfo, err error) error 
 	if info.IsDir() { // skip directory
 		return nil
 	}
-	if _, ok := me.Files[path]; ok {
+	if strings.HasSuffix(info.Name(), ".zip") {
+		//unzip and delete
+		// add new files to the list?
+	}
+	if _, ok := me.Cache.Files[path]; ok {
 		//fmt.Println("Already looked at", path, val)
 		return nil
 	}
@@ -73,8 +82,11 @@ func (me *Cache) checkDuplicate(path string, info os.FileInfo, err error) error 
 		if !DirExists(newdir) {
 			os.Mkdir(newdir, 0755)
 		}
-		os.Rename(path, newdir+"/"+filename)
-		path = newdir + "/" + filename
+		if path != newdir+"/"+filename {
+			os.Rename(path, newdir+"/"+filename)
+			path = newdir + "/" + filename
+		}
+
 	}
 	data, err := ioutil.ReadFile(path)
 
@@ -85,21 +97,21 @@ func (me *Cache) checkDuplicate(path string, info os.FileInfo, err error) error 
 	hash := sha256.Sum256(data) // get the file sha512 hash
 	hashstr := hex.EncodeToString(hash[:])
 
-	if me.Hashes == nil {
-		me.Hashes = make(map[string][]string)
+	if me.Cache.Hashes == nil {
+		me.Cache.Hashes = make(map[string][]string)
 	}
-	me.Hashes[hashstr] = append(me.Hashes[hashstr], path) // store in map for comparison
-	if me.Files == nil {
-		me.Files = make(map[string]string)
+	me.Cache.Hashes[hashstr] = append(me.Cache.Hashes[hashstr], path) // store in map for comparison
+	if me.Cache.Files == nil {
+		me.Cache.Files = make(map[string]string)
 	}
-	me.Files[path] = hashstr
+	me.Cache.Files[path] = hashstr
 
 	return nil
 }
-func (me *Cache) ShowDuplicates() {
-	for val := range me.Hashes {
-		if len(me.Hashes[val]) > 0 {
-			fmt.Println("Duplicates ", me.Hashes[val])
+func (me *Dedupe) ShowDuplicates() {
+	for val := range me.Cache.Hashes {
+		if len(me.Cache.Hashes[val]) > 0 {
+			fmt.Println("Duplicates ", me.Cache.Hashes[val])
 		}
 
 	}
