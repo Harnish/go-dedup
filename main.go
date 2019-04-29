@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/schollz/progressbar/v2"
 )
 
 var cachefile = "/Users/jharnish/.dedupcache.json"
@@ -26,12 +28,14 @@ type Cache struct {
 }
 
 type Dedupe struct {
-	Unzip    bool
-	Organize bool
-	Cache    Cache
-	Verbose  bool
-	Delete   bool
-	Progress bool
+	Unzip     bool
+	Organize  bool
+	Cache     Cache
+	Verbose   bool
+	Delete    bool
+	Progress  bool
+	FileCount int
+	pb        *progressbar.ProgressBar
 }
 
 func NewCache(path string) *Dedupe {
@@ -54,6 +58,9 @@ func NewCache(path string) *Dedupe {
 		return me
 	}
 	return me
+}
+func (me *Dedupe) CreateProgressBar() {
+	me.pb = progressbar.New(me.FileCount)
 }
 
 func (me *Dedupe) VerbosePrintln(output string) {
@@ -84,6 +91,9 @@ func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error
 		return nil
 	}
 	me.VerbosePrintln(path)
+	if me.Progress {
+		me.pb.Add(1)
+	}
 	if strings.HasSuffix(info.Name(), ".zip") {
 		me.VerbosePrintln("Unzipping " + path)
 		_, err := Unzip(path, "")
@@ -93,6 +103,7 @@ func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error
 			os.Remove(path)
 		}
 		return nil
+
 		//unzip and delete
 		// add new files to the list?
 	}
@@ -182,7 +193,9 @@ func main() {
 		case "-d":
 			c.Delete = true
 		case "-p":
+			c.CountFiles()
 			c.Progress = true
+			c.CreateProgressBar()
 		default:
 			dir = os.Args[idx]
 		}
@@ -285,4 +298,21 @@ func AppendIfMissing(slice []string, i string) []string {
 		}
 	}
 	return append(slice, i)
+}
+
+func (me *Dedupe) CountFiles() {
+	err := filepath.Walk(".",
+		func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				me.FileCount++
+			}
+			return nil
+		})
+	if err != nil {
+		log.Println(err)
+	}
+	fmt.Println("File Count", me.FileCount)
 }
