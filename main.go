@@ -129,6 +129,7 @@ func (me *Cache) DeleteDuplicates() {
 
 func main() {
 	organize := false
+	unzip := false
 	if len(os.Args) < 2 {
 		fmt.Printf("USAGE : %s [-c -s -z] <target_directory> \n", os.Args[0])
 		fmt.Println("-c purges the cache")
@@ -143,6 +144,8 @@ func main() {
 			PurgeCache(cachefile)
 		case "-s":
 			organize = true
+		case "-z":
+			unzip = true
 		default:
 			dir = os.Args[idx]
 		}
@@ -156,6 +159,7 @@ func main() {
 	}
 	c := NewCache(cachefile)
 	c.Organize = organize
+	c.Unzip = unzip
 	cx := make(chan os.Signal)
 	signal.Notify(cx, os.Interrupt, syscall.SIGTERM)
 	go func() {
