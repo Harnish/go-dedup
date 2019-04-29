@@ -29,10 +29,18 @@ type Dedupe struct {
 	Unzip    bool
 	Organize bool
 	Cache    Cache
+	Verbose  bool
+	Delete   bool
+	Progress bool
 }
 
 func NewCache(path string) *Dedupe {
 	me := &Dedupe{}
+	me.Unzip = false
+	me.Organize = false
+	me.Verbose = false
+	me.Delete = false
+	me.Progress = false
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
 		fmt.Println(err)
@@ -48,9 +56,14 @@ func NewCache(path string) *Dedupe {
 	return me
 }
 
-func PurgeCache(path string) {
-	me := &Dedupe{}
-	me.WriteCache(path)
+func (me *Dedupe) VerbosePrintln(output string) {
+	if me.Verbose {
+		fmt.Println(output)
+	}
+}
+
+func (me *Dedupe) PurgeCache() {
+	me.Cache = Cache{}
 }
 
 func (me *Dedupe) WriteCache(path string) {
@@ -62,7 +75,7 @@ func (me *Dedupe) WriteCache(path string) {
 }
 
 func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error {
-	//fmt.Println(path)
+
 	if err != nil {
 		fmt.Println(err)
 		return nil
@@ -70,26 +83,34 @@ func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error
 	if info.IsDir() { // skip directory
 		return nil
 	}
+	me.VerbosePrintln(path)
 	if strings.HasSuffix(info.Name(), ".zip") {
+		me.VerbosePrintln("Unzipping " + path)
 		_, err := Unzip(path, "")
 		if err != nil {
 			log.Fatal(err)
+		} else {
+			os.Remove(path)
 		}
+		return nil
 		//unzip and delete
 		// add new files to the list?
 	}
 	if _, ok := me.Cache.Files[path]; ok {
+		me.VerbosePrintln("Skipping " + path + " already in cache")
 		//fmt.Println("Already looked at", path, val)
 		return nil
 	}
 	if me.Organize {
+
 		pathparts := strings.Split(path, "/")
 		filename := pathparts[len(pathparts)-1]
-		newdir := filename[0:2]
+		newdir := strings.ToLower(filename[0:2])
 		if !DirExists(newdir) {
 			os.Mkdir(newdir, 0755)
 		}
 		if path != newdir+"/"+filename {
+			me.VerbosePrintln("Organizing " + path)
 			os.Rename(path, newdir+"/"+filename)
 			path = newdir + "/" + filename
 		}
@@ -119,7 +140,7 @@ func (me *Dedupe) checkDuplicate(path string, info os.FileInfo, err error) error
 }
 func (me *Dedupe) ShowDuplicates() {
 	for val := range me.Cache.Hashes {
-		if len(me.Cache.Hashes[val]) > 0 {
+		if len(me.Cache.Hashes[val]) > 1 {
 			fmt.Println("Duplicates ", me.Cache.Hashes[val])
 		}
 
@@ -127,7 +148,7 @@ func (me *Dedupe) ShowDuplicates() {
 }
 func (me *Dedupe) DeleteDuplicates() {
 	for val := range me.Cache.Hashes {
-		if len(me.Cache.Hashes[val]) > 0 {
+		if len(me.Cache.Hashes[val]) > 1 {
 			fmt.Println("Duplicates ", me.Cache.Hashes[val])
 		}
 
@@ -135,24 +156,33 @@ func (me *Dedupe) DeleteDuplicates() {
 }
 
 func main() {
-	organize := false
-	unzip := false
+
 	if len(os.Args) < 2 {
-		fmt.Printf("USAGE : %s [-c -s -z] <target_directory> \n", os.Args[0])
+		fmt.Printf("USAGE : %s [options] <target_directory> \n", os.Args[0])
 		fmt.Println("-c purges the cache")
 		fmt.Println("-s sorts the files into subdirectories")
 		fmt.Println("-z unzip any zipfiles")
+		fmt.Println("-d deletes duplicates")
+		fmt.Println("-v verbose output, show each file looked at")
+		fmt.Println("-p progress bar")
 		os.Exit(0)
 	}
+	c := NewCache(cachefile)
 	dir := ""
 	for idx := range os.Args {
 		switch os.Args[idx] {
 		case "-c":
-			PurgeCache(cachefile)
+			c.PurgeCache()
 		case "-s":
-			organize = true
+			c.Organize = true
 		case "-z":
-			unzip = true
+			c.Unzip = true
+		case "-v":
+			c.Verbose = true
+		case "-d":
+			c.Delete = true
+		case "-p":
+			c.Progress = true
 		default:
 			dir = os.Args[idx]
 		}
@@ -164,9 +194,7 @@ func main() {
 		fmt.Println("-z unzip any zipfiles")
 		os.Exit(0)
 	}
-	c := NewCache(cachefile)
-	c.Organize = organize
-	c.Unzip = unzip
+
 	cx := make(chan os.Signal)
 	signal.Notify(cx, os.Interrupt, syscall.SIGTERM)
 	go func() {
